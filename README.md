@@ -1,1 +1,1 @@
-# VividStereo-Mobile
+# VividStereo-Android
