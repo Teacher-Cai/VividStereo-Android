@@ -47,7 +47,7 @@ public class TcpCommu {
     static public Map<String, Long> getDevicesDelay(List<String> ips) {
         Map<String, Long> ipWithDelays = new HashMap<>();
         int serverPort = 4000;
-        ExecutorService executor = Executors.newFixedThreadPool(10);
+        ExecutorService executor = Executors.newFixedThreadPool(20);
         List<Future<Long>> res = new ArrayList<>();
 
         try {
@@ -95,9 +95,8 @@ public class TcpCommu {
             if (transferTime < 10) {
                 delays.add(estimateTimeDiff);
             }
-
         }
-
+        clientSocket.close();
         return Double.valueOf(delays.stream().mapToDouble(Double::valueOf).average().getAsDouble()).longValue();
     }
 

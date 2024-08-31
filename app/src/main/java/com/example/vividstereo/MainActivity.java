@@ -72,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
 
     public int currentPlayMusicIndex = 0;
     public TextView textView;
+    private Thread thread_tcp;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -111,41 +112,42 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 if (!GlobalInfo.getInstance().synchronization) {
-                play(filePaths.get(currentPlayMusicIndex), 0L);
-                Toast.makeText(MainActivity.this, "play music", Toast.LENGTH_SHORT).show();}
-                else {
-                Long nowTs = System.currentTimeMillis();
-                Long preSetTs = nowTs + 1000;
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        UdpCommu udpCommu = UdpCommu.getInstance();
+                    play(filePaths.get(currentPlayMusicIndex), 0L);
+                    Toast.makeText(MainActivity.this, "play music", Toast.LENGTH_SHORT).show();
+                } else {
+                    Long nowTs = System.currentTimeMillis();
+                    Long preSetTs = nowTs + 1000;
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            UdpCommu udpCommu = UdpCommu.getInstance();
 
-                        Long masterDeviceTsMs = Double.valueOf(Objects.toString(GlobalInfo.getInstance().ipWithDelay
-                                .getOrDefault(GlobalInfo.getInstance().localIp, 0L))).longValue() + preSetTs;
+                            Long masterDeviceTsMs = Double.valueOf(Objects.toString(GlobalInfo.getInstance().ipWithDelay
+                                    .getOrDefault(GlobalInfo.getInstance().localIp, 0L))).longValue() + preSetTs;
 
-                        for (Map.Entry<String, Long> entry : GlobalInfo.getInstance().ipWithDelay.entrySet()) {
-                            if (Objects.equals(entry.getKey(), GlobalInfo.getInstance().localIp)) {
-                                continue;
+                            for (Map.Entry<String, Long> entry : GlobalInfo.getInstance().ipWithDelay.entrySet()) {
+                                if (Objects.equals(entry.getKey(), GlobalInfo.getInstance().localIp)) {
+                                    continue;
+                                }
+
+                                JSONObject jsonObject = new JSONObject();
+                                try {
+                                    Long specificDeviceTsMs = masterDeviceTsMs - Double.valueOf(Objects.toString(entry.getValue())).longValue();
+                                    jsonObject.put("reason", "music_play");
+                                    jsonObject.put("music_name", files.get(currentPlayMusicIndex));
+                                    jsonObject.put("timeMs", specificDeviceTsMs);
+
+                                } catch (JSONException e) {
+                                    throw new RuntimeException(e);
+                                }
+
+                                String mess = jsonObject.toString();
+                                udpCommu.send(mess, entry.getKey());
                             }
-
-                            JSONObject jsonObject = new JSONObject();
-                            try {
-                                Long specificDeviceTsMs =  masterDeviceTsMs - Double.valueOf(Objects.toString(entry.getValue())).longValue();
-                                jsonObject.put("reason", "music_play");
-                                jsonObject.put("music_name", files.get(currentPlayMusicIndex));
-                                jsonObject.put("timeMs", specificDeviceTsMs);
-
-                            } catch (JSONException e) {
-                                throw new RuntimeException(e);
-                            }
-
-                            String mess = jsonObject.toString();
-                            udpCommu.send(mess, entry.getKey());
                         }
-                    }
-                }).start();
-                play(filePaths.get(currentPlayMusicIndex), preSetTs - systemPlayDelay);}
+                    }).start();
+                    play(filePaths.get(currentPlayMusicIndex), preSetTs - systemPlayDelay);
+                }
             }
         });
 
@@ -259,7 +261,7 @@ public class MainActivity extends AppCompatActivity {
 
                             JSONObject jsonObject = new JSONObject();
                             try {
-                                Long specificDeviceTsMs =  masterDeviceTsMs - Double.valueOf(Objects.toString(entry.getValue())).longValue();
+                                Long specificDeviceTsMs = masterDeviceTsMs - Double.valueOf(Objects.toString(entry.getValue())).longValue();
                                 jsonObject.put("reason", "music_play");
                                 jsonObject.put("music_name", files.get(currentPlayMusicIndex));
                                 jsonObject.put("timeMs", specificDeviceTsMs);
@@ -303,7 +305,7 @@ public class MainActivity extends AppCompatActivity {
 
                             JSONObject jsonObject = new JSONObject();
                             try {
-                                Long specificDeviceTsMs =  masterDeviceTsMs - Double.valueOf(Objects.toString(entry.getValue())).longValue();
+                                Long specificDeviceTsMs = masterDeviceTsMs - Double.valueOf(Objects.toString(entry.getValue())).longValue();
                                 jsonObject.put("reason", "music_play");
                                 jsonObject.put("music_name", files.get(currentPlayMusicIndex));
                                 jsonObject.put("timeMs", specificDeviceTsMs);
@@ -343,11 +345,12 @@ public class MainActivity extends AppCompatActivity {
                 }
                 String mess = jsonObject.toString();
 
+                String finalMess = mess;
                 Thread thread = new Thread(new Runnable() {
                     @Override
                     public void run() {
                         // 子线程要执行的代码
-                        UdpCommu.getInstance().send(mess, "255.255.255.255");  // 192.168.0.255
+                        UdpCommu.getInstance().send(finalMess, "255.255.255.255");  // 192.168.0.255
                     }
                 });
                 thread.start();
@@ -357,12 +360,37 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception e) {
                     Log.e("sleep", "onClick: ", e);
                 }
-                Log.d("sync", "upd: "+ GlobalInfo.getInstance().allDeviceIp);
+                Log.d("sync", "upd: " + GlobalInfo.getInstance().allDeviceIp);
                 GlobalInfo.getInstance().allDeviceIp.remove(GlobalInfo.getInstance().localIp);
-                Log.d("sync", "upd: "+ GlobalInfo.getInstance().allDeviceIp);
+                Log.d("sync", "upd: " + GlobalInfo.getInstance().allDeviceIp);
+
+                // ask for preparing tcp client
+                new Thread(new Runnable() {
+                    public void run() {
+                        List<String> ips = GlobalInfo.getInstance().allDeviceIp;
+                        UdpCommu udpCommu = UdpCommu.getInstance();
+                        for (String ip : ips) {
+                            JSONObject jsonObject = new JSONObject();
+                            try {
+                                jsonObject.put("reason", "tcp_sync");
+                            } catch (JSONException e) {
+                                throw new RuntimeException(e);
+                            }
+
+                            String mess = jsonObject.toString();
+                            udpCommu.send(mess, ip);
+                        }
+                    }
+                }).start();
+
+                try {
+                    sleep(1000);
+                } catch (Exception e) {
+                    Log.e("sleep", "onClick: ", e);
+                }
 
                 GlobalInfo.getInstance().ipWithDelay = TcpCommu.getDevicesDelay(GlobalInfo.getInstance().allDeviceIp);
-                Log.d("sync", "onClick: "+ GlobalInfo.getInstance().ipWithDelay);
+                Log.d("sync", "onClick: " + GlobalInfo.getInstance().ipWithDelay);
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
@@ -384,21 +412,67 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }).start();
 
+                // clear tcp_sync_finished
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        List<String> ips = GlobalInfo.getInstance().allDeviceIp;
+                        UdpCommu udpCommu = UdpCommu.getInstance();
+                        for (String ip : ips) {
+                            JSONObject jsonObject = new JSONObject();
+                            try {
+                                jsonObject.put("reason", "tcp_sync_finished");
+                            } catch (JSONException e) {
+                                throw new RuntimeException(e);
+                            }
+
+                            String mess = jsonObject.toString();
+                            udpCommu.send(mess, ip);
+                        }
+                        // clear tcp_sync_finished
+                        try {
+                            sleep(1000);
+                        } catch (Exception e) {
+                            Log.e("sleep", "onClick: ", e);
+                        }
+                        new Thread(new Runnable() {
+                            @Override
+                            public void run() {
+                                List<String> ips = GlobalInfo.getInstance().allDeviceIp;
+                                UdpCommu udpCommu = UdpCommu.getInstance();
+                                for (String ip : ips) {
+                                    JSONObject jsonObject = new JSONObject();
+                                    try {
+                                        jsonObject.put("reason", "tcp_sync_finished");
+                                    } catch (JSONException e) {
+                                        throw new RuntimeException(e);
+                                    }
+
+                                    String mess = jsonObject.toString();
+                                    udpCommu.send(mess, ip);
+                                }
+                            }
+                        }).start();
+
+                        GlobalInfo.getInstance().allDeviceIp.clear();
+                    }
+                }).start();
+
                 textView.setText("sync state:synchronized~");
             }
         });
 
         // start tcp service
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                // 子线程要执行的代码
-                initTcp();
-                tcpReceiver(clientTcp);
-//                udpReceiver();
-            }
-        });
-        thread.start();
+//        Thread thread = new Thread(new Runnable() {
+//            @Override
+//            public void run() {
+//                // 子线程要执行的代码
+//                initTcp();
+//                tcpReceiver(clientTcp);
+////                udpReceiver();
+//            }
+//        });
+//        thread.start();
 
         // get local ip and start upd service
         Thread thread1 = new Thread(new Runnable() {
@@ -416,10 +490,10 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onCompletion(MediaPlayer mp) {
                 if (GlobalInfo.getInstance().masterDevice) {
-                currentPlayMusicIndex += 1;
-                if (currentPlayMusicIndex >= files.size()) {
-                    currentPlayMusicIndex = 0;
-                }
+                    currentPlayMusicIndex += 1;
+                    if (currentPlayMusicIndex >= files.size()) {
+                        currentPlayMusicIndex = 0;
+                    }
 
                     Long nowTs = System.currentTimeMillis();
                     Long preSetTs = nowTs + 1000;
@@ -437,7 +511,7 @@ public class MainActivity extends AppCompatActivity {
 
                                 JSONObject jsonObject = new JSONObject();
                                 try {
-                                    Long specificDeviceTsMs =  masterDeviceTsMs - Double.valueOf(Objects.toString(entry.getValue())).longValue();
+                                    Long specificDeviceTsMs = masterDeviceTsMs - Double.valueOf(Objects.toString(entry.getValue())).longValue();
                                     jsonObject.put("reason", "music_play");
                                     jsonObject.put("music_name", files.get(currentPlayMusicIndex));
                                     jsonObject.put("timeMs", specificDeviceTsMs);
@@ -453,7 +527,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }).start();
 
-                play(filePaths.get(currentPlayMusicIndex), preSetTs - systemPlayDelay);
+                    play(filePaths.get(currentPlayMusicIndex), preSetTs - systemPlayDelay);
                 }
 
             }
@@ -483,6 +557,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void closeTcp() {
+        try {
+            clientTcp.close();
+            serverSocket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private ArrayList<String> getData() {
         if (!Objects.equals(musicFolderPath, "")) {
 
@@ -505,8 +588,7 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 Toast.makeText(MainActivity.this, "目录不存在或不是一个目录", Toast.LENGTH_LONG).show();
             }
-        }
-        else {
+        } else {
             Uri allSongsUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
             String selection = MediaStore.Audio.Media.IS_MUSIC + " != 0";
             Cursor cursor = getContentResolver().query(allSongsUri, null, null, null, selection);
@@ -663,6 +745,20 @@ public class MainActivity extends AppCompatActivity {
                 } else if ("return_ip_address".equals(reason)) {
                     String ipAddress = udpMessage.getString("ip_address");
                     GlobalInfo.getInstance().allDeviceIp.add(ipAddress);
+                } else if ("tcp_sync".equals(reason)) {
+                    // start tcp service
+                    thread_tcp = new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            // 子线程要执行的代码
+                            initTcp();
+                            tcpReceiver(clientTcp);
+                        }
+                    });
+                    thread_tcp.start();
+                } else if ("tcp_sync_finished".equals(reason)) {
+                    thread_tcp.interrupt();
+                    closeTcp();
                 }
             }
         } catch (Exception ex) {
@@ -761,7 +857,7 @@ public class MainActivity extends AppCompatActivity {
                 if (uri != null) {
                     String path = uri.getPath();
                     Toast.makeText(MainActivity.this, path, Toast.LENGTH_LONG).show();
-                    musicFolderPath =  Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + path.split(":")[1];
+                    musicFolderPath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + path.split(":")[1];
 
                     Log.d("folderPath", "onActivityResult: " + musicFolderPath);
                 }

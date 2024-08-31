@@ -36,6 +36,7 @@ public class UdpCommu {
 
     public void send(String message, String netAddress) {
         try {
+            Log.d("udp", "send: " + message);
             byte[] buf = message.getBytes();
             InetAddress inetAddress = InetAddress.getByName(netAddress);
             DatagramPacket datagramPacket = new DatagramPacket(buf, buf.length, inetAddress, portNum);
