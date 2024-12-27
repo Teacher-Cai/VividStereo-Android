@@ -25,7 +25,9 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.JsonReader;
 import android.util.Log;
+import android.view.GestureDetector;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -106,6 +108,49 @@ public class MainActivity extends AppCompatActivity {
                 android.R.layout.simple_expandable_list_item_1, getData());
         /* 将ArrayAdapter添加到ListView对象中 */
         lv.setAdapter(adapter);
+        lv.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                currentPlayMusicIndex = position;
+                if (!GlobalInfo.getInstance().synchronization) {
+                    play(filePaths.get(currentPlayMusicIndex), 0L);
+                    Toast.makeText(MainActivity.this, "play music", Toast.LENGTH_SHORT).show();
+                } else {
+                    Long nowTs = System.currentTimeMillis();
+                    Long preSetTs = nowTs + 1000;
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            UdpCommu udpCommu = UdpCommu.getInstance();
+
+                            Long masterDeviceTsMs = Double.valueOf(Objects.toString(GlobalInfo.getInstance().ipWithDelay
+                                    .getOrDefault(GlobalInfo.getInstance().localIp, 0L))).longValue() + preSetTs;
+
+                            for (Map.Entry<String, Long> entry : GlobalInfo.getInstance().ipWithDelay.entrySet()) {
+                                if (Objects.equals(entry.getKey(), GlobalInfo.getInstance().localIp)) {
+                                    continue;
+                                }
+
+                                JSONObject jsonObject = new JSONObject();
+                                try {
+                                    Long specificDeviceTsMs = masterDeviceTsMs - Double.valueOf(Objects.toString(entry.getValue())).longValue();
+                                    jsonObject.put("reason", "music_play");
+                                    jsonObject.put("music_name", files.get(currentPlayMusicIndex));
+                                    jsonObject.put("timeMs", specificDeviceTsMs);
+
+                                } catch (JSONException e) {
+                                    throw new RuntimeException(e);
+                                }
+
+                                String mess = jsonObject.toString();
+                                udpCommu.send(mess, entry.getKey());
+                            }
+                        }
+                    }).start();
+                    play(filePaths.get(currentPlayMusicIndex), preSetTs - systemPlayDelay);
+                }
+            }
+        });
 
         Button play = findViewById(R.id.play);
         play.setOnClickListener(new View.OnClickListener() {
