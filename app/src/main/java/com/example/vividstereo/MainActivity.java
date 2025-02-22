@@ -23,6 +23,7 @@ import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.DisplayMetrics;
 import android.util.JsonReader;
 import android.util.Log;
 import android.view.GestureDetector;
@@ -103,6 +104,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         lv = (ListView) findViewById(R.id.listView);
+        DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
+        int screenHeight = displayMetrics.heightPixels;
+        int screenWidth = displayMetrics.widthPixels;
+
+//        lv.setLayoutParams();
         /* 用于ListView的适配器 */
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
                 android.R.layout.simple_expandable_list_item_1, getData());
