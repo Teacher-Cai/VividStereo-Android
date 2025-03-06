@@ -116,7 +116,7 @@
             android:layout_marginTop="5dp"
             android:hint=" millisecond "
             android:maxLines="1"
-            android:inputType="number"
+            android:inputType="numberSigned"
             />
 
     </LinearLayout>
